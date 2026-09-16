@@ -17,6 +17,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
+
 const POPULAR_CATEGORIES = [
   'Trái Cây Tươi',
   'Rau Củ Đà Lạt',
@@ -26,29 +27,6 @@ const POPULAR_CATEGORIES = [
   'Mặc định',
 ];
 
-const PRESET_PRODUCTS = [
-  {
-    name: 'Lạp Xưởng Tôm Cai Lậy (Loại 1)',
-    url: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500&auto=format&fit=crop&q=80',
-    desc: 'Lạp xưởng tôm đặc sản gia truyền Cai Lậy, thịt thơm ngọt đậm đà, túi 500g hút chân không sạch sẽ.',
-    price: 180000,
-    cat: 'Lạp Xưởng Cai Lậy',
-  },
-  {
-    name: 'Hồng Mật Fuji Giòn Ngọt',
-    url: 'https://images.unsplash.com/photo-1577003833174-0498b8577771?w=500&auto=format&fit=crop&q=80',
-    desc: 'Hồng chín tự nhiên, lòng mật ngọt thanh, thịt giòn rụm không chát, khay 1kg chọn lọc.',
-    price: 150000,
-    cat: 'Trái Cây Tươi',
-  },
-  {
-    name: 'Sầu Riêng Ri6 Cơm Vàng Hạt Lép',
-    url: 'https://images.unsplash.com/photo-1587132137056-bfbf0166836e?w=500&auto=format&fit=crop&q=80',
-    desc: 'Sầu riêng chín cây miệt vườn Cai Lậy, múi vàng cơm khô dẻo béo ngậy, bao ăn từng trái.',
-    price: 280000,
-    cat: 'Trái Cây Tươi',
-  },
-];
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -98,16 +76,8 @@ export default function NewProductPage() {
     }
   };
 
-  const handleApplyPreset = (preset: typeof PRESET_PRODUCTS[0]) => {
-    setName(preset.name);
-    setCategory(preset.cat);
-    setPrice(preset.price);
-    setDescription(preset.desc);
-    setImageUrl(preset.url);
-    showToast('success', `Đã điền mẫu: ${preset.name}`);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
+
     e.preventDefault();
 
     if (!name.trim()) {
@@ -185,33 +155,9 @@ export default function NewProductPage() {
 
       {/* Main Form Container */}
       <main className="mx-auto max-w-xl px-4 pt-4 space-y-4">
-        {/* Chọn nhanh mẫu đặc sản Cai Lậy có sẵn */}
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-3.5 border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 mb-2">
-            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-            Chọn nhanh món mẫu có sẵn:
-          </span>
-          <div className="grid grid-cols-3 gap-2">
-            {PRESET_PRODUCTS.map((p, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleApplyPreset(p)}
-                className="p-2 rounded-xl border border-slate-200 hover:border-emerald-500 bg-slate-50 dark:bg-slate-800 dark:border-slate-700 text-left transition active:scale-95 cursor-pointer"
-              >
-                <div className="text-[11px] font-bold text-slate-900 dark:text-white line-clamp-1">
-                  {p.name.split(' ')[0]} {p.name.split(' ')[1] || ''}
-                </div>
-                <div className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {formatMoney(p.price)} đ
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Form Nhập liệu */}
         <form onSubmit={handleSubmit} className="space-y-4">
+
           {/* 1. CHỌN ẢNH TỪ ĐIỆN THOẠI (CAMERA / ALBUM) */}
           <div className="rounded-2xl bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-2xs">
             <div className="flex items-center justify-between mb-2.5">
