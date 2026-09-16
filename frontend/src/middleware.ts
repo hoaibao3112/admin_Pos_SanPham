@@ -20,17 +20,19 @@ export async function middleware(req: NextRequest) {
   const isAuthenticated = !!session;
 
   const isLoginPage = pathname === '/login';
+  const isPublicPage = isLoginPage || pathname.startsWith('/tra-cuu');
 
-  // 1. Nếu đã đăng nhập mà cố vào /login -> Chuyển hướng về /products
+  // 1. Nếu đã đăng nhập mà cố vào /login -> Chuyển hướng về /orders
   if (isLoginPage && isAuthenticated) {
-    return NextResponse.redirect(new URL('/products', req.url));
+    return NextResponse.redirect(new URL('/orders', req.url));
   }
 
-  // 2. Nếu chưa đăng nhập và không phải trang /login -> Bắt buộc chuyển về /login
-  if (!isLoginPage && !isAuthenticated) {
+  // 2. Nếu chưa đăng nhập và không phải trang công khai -> Bắt buộc chuyển về /login
+  if (!isPublicPage && !isAuthenticated) {
     const loginUrl = new URL('/login', req.url);
     return NextResponse.redirect(loginUrl);
   }
+
 
   return NextResponse.next();
 }

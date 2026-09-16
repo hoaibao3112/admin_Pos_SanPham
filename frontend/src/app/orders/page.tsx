@@ -25,10 +25,11 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
-  LucideIcon,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 const STATUS_TABS: Array<{ id: string; label: string; icon: LucideIcon }> = [
+
 
   { id: 'ALL', label: 'Tất cả trạng thái', icon: ShoppingBag },
   { id: 'PENDING', label: 'Chờ duyệt', icon: AlertCircle },
