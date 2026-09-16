@@ -17,7 +17,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Plus,
+  X,
 } from 'lucide-react';
+
 
 
 const DEFAULT_CATEGORIES = [
@@ -61,7 +63,7 @@ export default function NewProductPage() {
     return num.toLocaleString('vi-VN');
   };
 
-  // Tải danh sách nhóm sản phẩm đã có của shop + nhóm người dùng tự lưu
+  // Tải danh sách nhóm sản phẩm đã có của shop + nhóm người dùng tự lưu (loại trừ nhóm đã xóa)
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -73,16 +75,26 @@ export default function NewProductPage() {
         const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
         const savedCategories: string[] = stored ? JSON.parse(stored) : [];
 
+        const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+        const deletedList: string[] = storedDeleted ? JSON.parse(storedDeleted) : [];
+
         const combined = Array.from(
           new Set([...shopCategories, ...savedCategories, ...DEFAULT_CATEGORIES])
-        );
-        setCategories(combined);
+        ).filter((c) => !deletedList.includes(c));
+
+        setCategories(combined.length > 0 ? combined : ['Mặc định']);
       } catch {
         try {
           const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+          const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+          const deletedList: string[] = storedDeleted ? JSON.parse(storedDeleted) : [];
+
           if (stored) {
             const saved: string[] = JSON.parse(stored);
-            setCategories(Array.from(new Set([...saved, ...DEFAULT_CATEGORIES])));
+            const filtered = Array.from(new Set([...saved, ...DEFAULT_CATEGORIES])).filter(
+              (c) => !deletedList.includes(c)
+            );
+            setCategories(filtered.length > 0 ? filtered : ['Mặc định']);
           }
         } catch {}
       }
@@ -99,11 +111,19 @@ export default function NewProductPage() {
     if (!categories.includes(trimmed)) {
       const updated = [trimmed, ...categories];
       setCategories(updated);
+
       try {
         const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
         const saved: string[] = stored ? JSON.parse(stored) : [];
         if (!saved.includes(trimmed)) {
           localStorage.setItem('custom_categories', JSON.stringify([trimmed, ...saved]));
+        }
+
+        // Gỡ khỏi deleted_categories nếu trước đó từng xóa
+        const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+        if (storedDeleted) {
+          const deletedList: string[] = JSON.parse(storedDeleted);
+          localStorage.setItem('deleted_categories', JSON.stringify(deletedList.filter((c) => c !== trimmed)));
         }
       } catch {}
     }
@@ -113,6 +133,38 @@ export default function NewProductPage() {
     setNewCategoryInput('');
     showToast('success', `Đã thêm và chọn nhóm: "${trimmed}"`);
   };
+
+  // Xóa nhóm khỏi danh sách
+  const handleDeleteCategory = (catToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (catToDelete === 'Mặc định') return;
+
+    const updated = categories.filter((c) => c !== catToDelete);
+    setCategories(updated);
+
+    // Nếu đang chọn nhóm bị xóa, chuyển về nhóm đầu tiên còn lại hoặc 'Mặc định'
+    if (category === catToDelete) {
+      setCategory(updated[0] || 'Mặc định');
+    }
+
+    // Lưu lại để không bị tự phục hồi khi tải lại trang
+    try {
+      const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+      const deletedList: string[] = storedDeleted ? JSON.parse(storedDeleted) : [];
+      if (!deletedList.includes(catToDelete)) {
+        localStorage.setItem('deleted_categories', JSON.stringify([...deletedList, catToDelete]));
+      }
+
+      const storedCustom = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+      if (storedCustom) {
+        const customList: string[] = JSON.parse(storedCustom);
+        localStorage.setItem('custom_categories', JSON.stringify(customList.filter((c) => c !== catToDelete)));
+      }
+    } catch {}
+
+    showToast('success', `Đã xóa nhóm: "${catToDelete}"`);
+  };
+
 
 
   // Chọn ảnh trực tiếp từ Camera / Thư viện ảnh trên iPhone
@@ -325,25 +377,41 @@ export default function NewProductPage() {
               </span>
             </div>
 
-            {/* Danh sách các nút nhóm sản phẩm */}
+            {/* Danh sách các nút nhóm sản phẩm có dấu x xóa nhanh */}
             <div className="flex items-center gap-2 flex-wrap">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => {
-                    setCategory(cat);
-                    setCustomCat('');
-                  }}
-                  className={`h-9 px-3.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer ${
-                    category === cat && !customCat
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+              {categories.map((cat) => {
+                const isSelected = category === cat && !customCat;
+                return (
+                  <div
+                    key={cat}
+                    onClick={() => {
+                      setCategory(cat);
+                      setCustomCat('');
+                    }}
+                    className={`h-9 pl-3 pr-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs select-none ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    {cat !== 'Mặc định' && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteCategory(cat, e)}
+                        title={`Xóa nhóm ${cat}`}
+                        className={`h-5 w-5 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                          isSelected
+                            ? 'bg-white/25 hover:bg-rose-500 hover:text-white text-white'
+                            : 'bg-slate-200 hover:bg-rose-500 hover:text-white text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <X className="h-3 w-3 stroke-[3]" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Khung gõ thêm nhóm mới tại đây */}
@@ -373,11 +441,11 @@ export default function NewProductPage() {
                   className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>+ Thêm</span>
+                  <span>Thêm</span>
                 </button>
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5 pl-1 italic">
-                💡 Bạn chỉ cần gõ tên và bấm nút <b>+ Thêm</b> (hoặc bấm Enter) để tạo nhóm mới ngay lập tức.
+                💡 Bạn chỉ cần gõ tên và bấm nút <b>Thêm</b> (hoặc bấm Enter) để tạo nhóm mới ngay lập tức. Bấm dấu <b>✕</b> trên từng nhóm để xóa nhanh.
               </p>
             </div>
           </div>
