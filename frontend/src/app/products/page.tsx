@@ -27,7 +27,7 @@ const DEFAULT_CATEGORIES = [
   'Lạp Xưởng Cai Lậy',
   'Bánh Hạt & Sữa',
   'Đồ Khô Ăn Vặt',
-  'Chung',
+  'Mặc định',
 ];
 
 const initialForm: ProductFormData = {
@@ -44,6 +44,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tất cả');
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
 
   // Quản lý Dialog / Modal Thêm hoặc Sửa
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -71,12 +73,36 @@ export default function ProductsPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Cập nhật danh sách nhóm sản phẩm từ DB + localStorage - các nhóm đã xóa
+  const refreshCategories = (prods?: Product[]) => {
+    try {
+      const targetProds = prods || products;
+      const shopCategories = targetProds
+        ? Array.from(new Set(targetProds.map((p) => p.category).filter((c): c is string => Boolean(c?.trim()))))
+        : [];
+
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+      const savedCategories: string[] = stored ? JSON.parse(stored) : [];
+
+      const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+      const deletedList: string[] = storedDeleted ? JSON.parse(storedDeleted) : [];
+
+      const combined = Array.from(
+        new Set([...shopCategories, ...savedCategories, ...DEFAULT_CATEGORIES])
+      ).filter((c) => !deletedList.includes(c));
+
+      setCategories(combined.length > 0 ? combined : ['Mặc định']);
+    } catch {}
+  };
+
   // 1. Tải danh sách sản phẩm
   const loadProducts = async () => {
     setLoading(true);
     try {
       const res = await fetchApi<{ success: boolean; data: Product[] }>('/api/products');
-      setProducts(res.data || []);
+      const data = res.data || [];
+      setProducts(data);
+      refreshCategories(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Không thể tải danh sách sản phẩm';
       showToast('error', msg);
@@ -87,7 +113,70 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadProducts();
+    refreshCategories();
   }, []);
+
+  // Thêm nhóm mới tại modal
+  const handleAddCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) return;
+
+    if (!categories.includes(trimmed)) {
+      const updated = [trimmed, ...categories];
+      setCategories(updated);
+
+      try {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+        const saved: string[] = stored ? JSON.parse(stored) : [];
+        if (!saved.includes(trimmed)) {
+          localStorage.setItem('custom_categories', JSON.stringify([trimmed, ...saved]));
+        }
+
+        const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+        if (storedDeleted) {
+          const deletedList: string[] = JSON.parse(storedDeleted);
+          localStorage.setItem('deleted_categories', JSON.stringify(deletedList.filter((c) => c !== trimmed)));
+        }
+      } catch {}
+    }
+
+    setFormData((prev) => ({ ...prev, category: trimmed }));
+    setCustomCategoryInput('');
+    setNewCategoryInput('');
+    showToast('success', `Đã thêm và chọn nhóm: "${trimmed}"`);
+  };
+
+  // Xóa nhóm khỏi danh sách
+  const handleDeleteCategory = (catToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (catToDelete === 'Mặc định') return;
+
+    const updated = categories.filter((c) => c !== catToDelete);
+    setCategories(updated);
+
+    if (formData.category === catToDelete) {
+      setFormData((prev) => ({ ...prev, category: updated[0] || 'Mặc định' }));
+    }
+    if (selectedCategory === catToDelete) {
+      setSelectedCategory('Tất cả');
+    }
+
+    try {
+      const storedDeleted = typeof window !== 'undefined' ? localStorage.getItem('deleted_categories') : null;
+      const deletedList: string[] = storedDeleted ? JSON.parse(storedDeleted) : [];
+      if (!deletedList.includes(catToDelete)) {
+        localStorage.setItem('deleted_categories', JSON.stringify([...deletedList, catToDelete]));
+      }
+
+      const storedCustom = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+      if (storedCustom) {
+        const customList: string[] = JSON.parse(storedCustom);
+        localStorage.setItem('custom_categories', JSON.stringify(customList.filter((c) => c !== catToDelete)));
+      }
+    } catch {}
+
+    showToast('success', `Đã xóa nhóm: "${catToDelete}"`);
+  };
 
   // 2. Kéo danh sách sản phẩm trực tiếp từ Pancake POS
   const handleSyncFromPancake = async () => {
@@ -112,6 +201,7 @@ export default function ProductsPage() {
     setEditingId(null);
     setFormData(initialForm);
     setCustomCategoryInput('');
+    setNewCategoryInput('');
     setIsModalOpen(true);
   };
 
@@ -127,6 +217,7 @@ export default function ProductsPage() {
       imageUrl: p.imageUrl || '',
     });
     setCustomCategoryInput('');
+    setNewCategoryInput('');
     setIsModalOpen(true);
   };
 
@@ -296,11 +387,11 @@ export default function ProductsPage() {
 
         {/* Lọc nhanh theo nhóm sản phẩm (Horizontal chips) */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-          {['Tất cả', ...DEFAULT_CATEGORIES].map((cat) => (
+          {['Tất cả', ...categories].map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`h-8 px-3 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 ${
+              className={`h-8 px-3 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
                 selectedCategory === cat
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400'
@@ -574,39 +665,85 @@ export default function ProductsPage() {
               </div>
 
               {/* 2. NHÓM SẢN PHẨM */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 mb-1.5">
-                  Nhóm sản phẩm
-                </label>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {DEFAULT_CATEGORIES.map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => {
-                        setFormData({ ...formData, category: cat });
-                        setCustomCategoryInput('');
-                      }}
-                      className={`h-8 px-3 rounded-full text-xs font-bold transition-all active:scale-95 ${
-                        formData.category === cat && !customCategoryInput
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                    Nhóm sản phẩm
+                  </label>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Đang chọn: <b className="text-emerald-600 dark:text-emerald-400">{customCategoryInput || formData.category}</b>
+                  </span>
                 </div>
 
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    placeholder="Hoặc gõ nhóm khác nếu muốn..."
-                    value={customCategoryInput}
-                    onChange={(e) => setCustomCategoryInput(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium outline-hidden focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800"
-                    style={{ fontSize: '15px' }}
-                  />
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {categories.map((cat) => {
+                    const isSelected = formData.category === cat && !customCategoryInput;
+                    return (
+                      <div
+                        key={cat}
+                        onClick={() => {
+                          setFormData({ ...formData, category: cat });
+                          setCustomCategoryInput('');
+                        }}
+                        className={`h-8 pl-3 pr-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs select-none ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        <span>{cat}</span>
+                        {cat !== 'Mặc định' && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteCategory(cat, e)}
+                            title={`Xóa nhóm ${cat}`}
+                            className={`h-4 w-4 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                              isSelected
+                                ? 'bg-white/25 hover:bg-rose-500 hover:text-white text-white'
+                                : 'bg-slate-200 hover:bg-rose-500 hover:text-white text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <X className="h-2.5 w-2.5 stroke-[3]" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Thêm nhóm mới tại modal */}
+                <div className="pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Gõ tên nhóm mới cần thêm..."
+                      value={newCategoryInput}
+                      onChange={(e) => {
+                        setNewCategoryInput(e.target.value);
+                        setCustomCategoryInput(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddCategory();
+                        }
+                      }}
+                      className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium outline-hidden focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800"
+                      style={{ fontSize: '14px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCategory}
+                      disabled={!newCategoryInput.trim()}
+                      className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Thêm</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1 pl-0.5 italic">
+                    💡 Gõ tên và bấm <b>Thêm</b> (hoặc Enter) để tạo nhóm mới. Bấm <b>✕</b> để xóa nhóm.
+                  </p>
                 </div>
               </div>
 
