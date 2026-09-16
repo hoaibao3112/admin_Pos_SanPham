@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useTransition, useRef } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
+
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchApi, uploadImageFile } from '@/lib/api';
@@ -15,10 +16,11 @@ import {
   Store,
   CheckCircle2,
   AlertCircle,
+  Plus,
 } from 'lucide-react';
 
 
-const POPULAR_CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   'Trái Cây Tươi',
   'Rau Củ Đà Lạt',
   'Lạp Xưởng Cai Lậy',
@@ -33,7 +35,9 @@ export default function NewProductPage() {
   const [, startTransition] = useTransition();
 
   const [name, setName] = useState('');
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [category, setCategory] = useState('Trái Cây Tươi');
+  const [newCategoryInput, setNewCategoryInput] = useState('');
   const [customCat, setCustomCat] = useState('');
   const [price, setPrice] = useState<number | string>(150000);
   const [stock, setStock] = useState<number>(10);
@@ -56,6 +60,60 @@ export default function NewProductPage() {
     if (isNaN(num)) return '0';
     return num.toLocaleString('vi-VN');
   };
+
+  // Tải danh sách nhóm sản phẩm đã có của shop + nhóm người dùng tự lưu
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetchApi<{ success: boolean; data: Array<{ category?: string }> }>('/api/products');
+        const shopCategories = res.data
+          ? Array.from(new Set(res.data.map((p) => p.category).filter((c): c is string => Boolean(c?.trim()))))
+          : [];
+
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+        const savedCategories: string[] = stored ? JSON.parse(stored) : [];
+
+        const combined = Array.from(
+          new Set([...shopCategories, ...savedCategories, ...DEFAULT_CATEGORIES])
+        );
+        setCategories(combined);
+      } catch {
+        try {
+          const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+          if (stored) {
+            const saved: string[] = JSON.parse(stored);
+            setCategories(Array.from(new Set([...saved, ...DEFAULT_CATEGORIES])));
+          }
+        } catch {}
+      }
+    };
+
+    loadCategories();
+  }, []);
+
+  // Thêm nhóm mới tại chỗ
+  const handleAddCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) return;
+
+    if (!categories.includes(trimmed)) {
+      const updated = [trimmed, ...categories];
+      setCategories(updated);
+      try {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('custom_categories') : null;
+        const saved: string[] = stored ? JSON.parse(stored) : [];
+        if (!saved.includes(trimmed)) {
+          localStorage.setItem('custom_categories', JSON.stringify([trimmed, ...saved]));
+        }
+      } catch {}
+    }
+
+    setCategory(trimmed);
+    setCustomCat('');
+    setNewCategoryInput('');
+    showToast('success', `Đã thêm và chọn nhóm: "${trimmed}"`);
+  };
+
 
   // Chọn ảnh trực tiếp từ Camera / Thư viện ảnh trên iPhone
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,12 +315,19 @@ export default function NewProductPage() {
           </div>
 
           {/* 3. NHÓM SẢN PHẨM */}
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-2xs">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 mb-2">
-              Nhóm sản phẩm
-            </label>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                Nhóm sản phẩm
+              </label>
+              <span className="text-[11px] text-slate-400 font-medium">
+                Đang chọn: <b className="text-emerald-600 dark:text-emerald-400">{customCat || category}</b>
+              </span>
+            </div>
+
+            {/* Danh sách các nút nhóm sản phẩm */}
             <div className="flex items-center gap-2 flex-wrap">
-              {POPULAR_CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   type="button"
@@ -281,17 +346,42 @@ export default function NewProductPage() {
               ))}
             </div>
 
-            <div className="mt-2.5">
-              <input
-                type="text"
-                placeholder="Hoặc gõ nhóm khác nếu muốn..."
-                value={customCat}
-                onChange={(e) => setCustomCat(e.target.value)}
-                className="w-full h-10 px-3.5 rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800 text-xs font-medium outline-hidden focus:border-emerald-500"
-                style={{ fontSize: '16px' }}
-              />
+            {/* Khung gõ thêm nhóm mới tại đây */}
+            <div className="pt-1">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Gõ tên nhóm mới cần thêm (VD: Đồ Ăn Vặt, Bánh Tráng...)"
+                  value={newCategoryInput}
+                  onChange={(e) => {
+                    setNewCategoryInput(e.target.value);
+                    setCustomCat(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  className="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800 text-sm font-medium outline-hidden focus:border-emerald-500 transition"
+                  style={{ fontSize: '15px' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryInput.trim()}
+                  className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>+ Thêm</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5 pl-1 italic">
+                💡 Bạn chỉ cần gõ tên và bấm nút <b>+ Thêm</b> (hoặc bấm Enter) để tạo nhóm mới ngay lập tức.
+              </p>
             </div>
           </div>
+
 
           {/* 4 & 5. GIÁ BÁN & TỒN KHO */}
           <div className="grid grid-cols-2 gap-3">
