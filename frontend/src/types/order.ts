@@ -55,3 +55,13 @@ export interface OrderListResponse {
     totalRevenue: number;
   };
 }
+
+export interface OrderLookupResponse {
+  success: boolean;
+  phone: string;
+  totalOrders: number;
+  orders: Order[];
+}
+
+export type TimeFilterType = 'ALL' | 'TODAY' | 'YESTERDAY' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM';
+

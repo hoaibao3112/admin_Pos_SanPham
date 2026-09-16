@@ -44,11 +44,15 @@ export interface PancakeVariation {
   title?: string;
   sku?: string;
   display_id?: string;
+  custom_id?: string;
   retail_price?: number;
+  price_at_counter?: number;
   original_price?: number;
   remain_quantity?: number;
+  total_quantity?: number;
   stock?: number;
   images?: string[];
+  image?: string;
   warehouse_stocks?: Array<{ warehouse_id: number; quantity: number }>;
 }
 
@@ -57,16 +61,20 @@ export interface PancakeRawProduct {
   name?: string;
   title?: string;
   description?: string;
+  note_product?: string;
   category_name?: string;
   category?: { name?: string };
+  categories?: Array<{ name?: string }>;
   display_id?: string;
   sku?: string;
   retail_price?: number;
   price?: number;
   stock?: number;
+  image?: string;
   images?: string[];
   variations?: PancakeVariation[];
 }
+
 
 export interface PancakePushResponse {
   message?: string;

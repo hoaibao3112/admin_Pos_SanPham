@@ -448,19 +448,20 @@ export async function syncProductsFromPancake() {
   for (const raw of rawProducts) {
     try {
       const baseName = raw.name || raw.title || 'Sản phẩm Pancake';
-      const description = (raw as any).note_product || raw.description || '';
-      const category = ((raw as any).categories && (raw as any).categories[0]?.name) || raw.category_name || raw.category?.name || 'Nông sản';
+      const description = raw.note_product || raw.description || '';
+      const category = (raw.categories && raw.categories[0]?.name) || raw.category_name || raw.category?.name || 'Nông sản';
       const variations = (raw.variations && raw.variations.length > 0) ? raw.variations : [{}];
 
       for (const v of variations) {
         const varName = v.name || v.title || '';
         const name = varName && varName !== baseName ? `${baseName} - ${varName}` : baseName;
-        const price = Number(v.retail_price ?? (v as any).price_at_counter ?? raw.retail_price ?? raw.price ?? 0);
-        const stock = Number(v.remain_quantity ?? (v as any).total_quantity ?? v.stock ?? raw.stock ?? 0);
-        const sku = String(v.display_id || (raw as any).custom_id || v.sku || raw.display_id || `SP-${raw.id}`);
+        const price = Number(v.retail_price ?? v.price_at_counter ?? raw.retail_price ?? raw.price ?? 0);
+        const stock = Number(v.remain_quantity ?? v.total_quantity ?? v.stock ?? raw.stock ?? 0);
+        const sku = String(v.display_id || v.custom_id || v.sku || raw.display_id || `SP-${raw.id}`);
         const pancakeProductId = String(raw.id || '');
         const pancakeVariationId = String(v.id || '');
-        const imageUrl = (v.images && v.images[0]) || (raw as any).image || raw.images?.[0] || null;
+        const imageUrl = (v.images && v.images[0]) || v.image || raw.image || raw.images?.[0] || null;
+
 
         if (isDbReady) {
           try {

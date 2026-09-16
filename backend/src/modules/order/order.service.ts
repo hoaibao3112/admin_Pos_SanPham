@@ -37,6 +37,12 @@ export interface InMemoryOrder {
   updatedAt: string;
 }
 
+export interface PancakeRawVariationInfo {
+  name?: string;
+  retail_price?: number;
+  images?: string[];
+}
+
 export interface PancakeRawItem {
   id?: string | number;
   product_name?: string;
@@ -46,13 +52,22 @@ export interface PancakeRawItem {
   quantity?: number;
   price?: number;
   retail_price?: number;
+  variation_info?: PancakeRawVariationInfo;
+}
+
+export interface PancakeRawCustomer {
+  name?: string;
+  phone_number?: string;
+  phone_numbers?: string[];
+  address?: string;
+  shop_customer_addresses?: Array<{ full_address?: string }>;
 }
 
 export interface PancakeRawOrder {
   id?: string | number;
   order_id?: string | number;
   bill_full_name?: string;
-  customer?: { name?: string; phone_number?: string; address?: string };
+  customer?: PancakeRawCustomer;
   shipping_address?: { full_name?: string; phone_number?: string; full_address?: string; address?: string };
   bill_phone_number?: string;
   customer_note?: string;
@@ -65,12 +80,15 @@ export interface PancakeRawOrder {
   bill_code?: string;
   status?: string | number;
   is_paid?: boolean;
+  total_price?: number;
+  total_price_after_sub_discount?: number;
 }
 
 export interface PancakeOrdersApiResponse {
   data?: PancakeRawOrder[];
   orders?: PancakeRawOrder[];
 }
+
 
 /**
  * Tính toán an toàn lại toàn bộ giá trị đơn hàng trên Backend
@@ -93,20 +111,66 @@ export function clearMockOrders() {
   return inMemoryOrders;
 }
 
+function parseDateFilter(
+  dateStr?: string,
+  monthStr?: string,
+  startDateStr?: string,
+  endDateStr?: string
+): { start?: Date; end?: Date } | null {
+  if (dateStr?.trim()) {
+    const d = dateStr.trim();
+    const start = new Date(`${d}T00:00:00.000+07:00`);
+    const end = new Date(`${d}T23:59:59.999+07:00`);
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+      return { start, end };
+    }
+  }
+
+  if (monthStr?.trim()) {
+    const parts = monthStr.trim().split('-');
+    if (parts.length === 2) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      if (!isNaN(year) && !isNaN(month) && month >= 1 && month <= 12) {
+        const start = new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000+07:00`);
+        const nextMonth = month === 12 ? 1 : month + 1;
+        const nextYear = month === 12 ? year + 1 : year;
+        const end = new Date(
+          new Date(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00.000+07:00`).getTime() - 1
+        );
+        return { start, end };
+      }
+    }
+  }
+
+  if (startDateStr?.trim() || endDateStr?.trim()) {
+    const start = startDateStr?.trim() ? new Date(`${startDateStr.trim()}T00:00:00.000+07:00`) : undefined;
+    const end = endDateStr?.trim() ? new Date(`${endDateStr.trim()}T23:59:59.999+07:00`) : undefined;
+    return { start, end };
+  }
+
+  return null;
+}
+
 /**
- * Lấy danh sách đơn hàng (kèm bộ lọc trạng thái, tìm kiếm, thống kê)
+ * Lấy danh sách đơn hàng (kèm bộ lọc trạng thái, tìm kiếm, ngày/tháng, thống kê)
  */
 export async function listOrders(query: OrderQueryInput) {
   const accountId = getAccountId();
   const page = query.page || 1;
   const limit = query.limit || 50;
   const skip = (page - 1) * limit;
+  const dateRange = parseDateFilter(query.date, query.month, query.startDate, query.endDate);
 
   try {
     const whereClause: Prisma.OrderWhereInput = { accountId };
 
     if (query.status && query.status !== 'ALL') {
       whereClause.status = query.status as OrderStatus;
+    }
+
+    if (query.phone?.trim()) {
+      whereClause.customerPhone = { contains: query.phone.trim(), mode: 'insensitive' };
     }
 
     if (query.search?.trim()) {
@@ -116,6 +180,12 @@ export async function listOrders(query: OrderQueryInput) {
         { customerName: { contains: term, mode: 'insensitive' } },
         { customerPhone: { contains: term, mode: 'insensitive' } },
       ];
+    }
+
+    if (dateRange) {
+      whereClause.createdAt = {};
+      if (dateRange.start) whereClause.createdAt.gte = dateRange.start;
+      if (dateRange.end) whereClause.createdAt.lte = dateRange.end;
     }
 
     const [total, orders, pendingCount, revenueAgg] = await Promise.all([
@@ -171,6 +241,11 @@ export async function listOrders(query: OrderQueryInput) {
       filtered = filtered.filter((o) => o.status === query.status);
     }
 
+    if (query.phone?.trim()) {
+      const p = query.phone.trim();
+      filtered = filtered.filter((o) => o.customerPhone && o.customerPhone.includes(p));
+    }
+
     if (query.search?.trim()) {
       const t = query.search.trim().toLowerCase();
       filtered = filtered.filter(
@@ -179,6 +254,15 @@ export async function listOrders(query: OrderQueryInput) {
           o.customerName.toLowerCase().includes(t) ||
           (o.customerPhone && o.customerPhone.includes(t))
       );
+    }
+
+    if (dateRange) {
+      filtered = filtered.filter((o) => {
+        const orderTime = new Date(o.createdAt).getTime();
+        if (dateRange.start && orderTime < dateRange.start.getTime()) return false;
+        if (dateRange.end && orderTime > dateRange.end.getTime()) return false;
+        return true;
+      });
     }
 
     const pendingCount = inMemoryOrders.filter((o) => o.status === 'PENDING').length;
@@ -198,6 +282,49 @@ export async function listOrders(query: OrderQueryInput) {
         pendingOrders: pendingCount,
         totalRevenue,
       },
+    };
+  }
+}
+
+/**
+ * Tra cứu danh sách đơn hàng theo số điện thoại (phục vụ khách tra cứu bill cá nhân)
+ */
+export async function lookupOrdersByPhone(phone: string) {
+  const cleanPhone = phone.trim();
+  const digitsOnly = cleanPhone.replace(/\D/g, '');
+  const accountId = getAccountId();
+
+  try {
+    const orders = await prisma.order.findMany({
+      where: {
+        accountId,
+        customerPhone: { contains: cleanPhone },
+      },
+      include: {
+        items: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return {
+      phone: cleanPhone,
+      totalOrders: orders.length,
+      orders,
+    };
+  } catch (_e) {
+    const filtered = inMemoryOrders.filter(
+      (o) =>
+        (o.accountId === accountId || o.accountId === 'acc_default') &&
+        o.customerPhone &&
+        (o.customerPhone.includes(cleanPhone) ||
+          (digitsOnly.length >= 8 && o.customerPhone.replace(/\D/g, '').includes(digitsOnly)))
+    );
+
+    return {
+      phone: cleanPhone,
+      totalOrders: filtered.length,
+      orders: filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     };
   }
 }
@@ -237,9 +364,58 @@ export async function getOrderById(id: string) {
 export async function createOrder(data: CreateOrderInput) {
   const accountId = getAccountId();
 
-  // Tái tính toán an toàn từ các item
+  // BẢO MẬT: Không tin tưởng giá gửi từ client. Đối chiếu với CSDL nếu có productId
+  let verifiedItems = data.items.map((it) => ({
+    productId: it.productId || null,
+    productName: it.productName,
+    productImage: it.productImage || null,
+    quantity: it.quantity,
+    price: it.price,
+    total: it.quantity * it.price,
+  }));
+
+  const productIds = data.items
+    .map((i) => i.productId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+  if (productIds.length > 0) {
+    try {
+      const dbProducts = await prisma.product.findMany({
+        where: { id: { in: productIds }, accountId },
+        select: { id: true, price: true, name: true, imageUrl: true },
+      });
+      const prodMap = new Map(dbProducts.map((p) => [p.id, p]));
+
+      verifiedItems = data.items.map((item) => {
+        if (item.productId && prodMap.has(item.productId)) {
+          const p = prodMap.get(item.productId)!;
+          const officialPrice = Number(p.price);
+          return {
+            productId: item.productId,
+            productName: item.productName || p.name,
+            productImage: item.productImage || p.imageUrl,
+            quantity: item.quantity,
+            price: officialPrice,
+            total: item.quantity * officialPrice,
+          };
+        }
+        return {
+          productId: item.productId || null,
+          productName: item.productName,
+          productImage: item.productImage || null,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.quantity * item.price,
+        };
+      });
+    } catch (_dbErr) {
+      // Fallback nếu DB offline
+    }
+  }
+
+  // Tái tính toán an toàn từ các item đã xác thực
   const { subtotal, totalAmount } = calculateOrderTotals(
-    data.items,
+    verifiedItems,
     data.shippingFee,
     data.discount
   );
@@ -252,43 +428,44 @@ export async function createOrder(data: CreateOrderInput) {
       await ensureAccountExists(accountId);
 
       const order = await prisma.order.create({
-      data: {
-        accountId,
-        code,
-        customerName: data.customerName,
-        customerPhone: data.customerPhone || null,
-        customerAddress: data.customerAddress || null,
-        customerNote: data.customerNote || null,
-        paymentMethod: data.paymentMethod || 'COD',
-        shippingFee: data.shippingFee || 0,
-        discount: data.discount || 0,
-        subtotal,
-        totalAmount,
-        pancakeOrderId: data.pancakeOrderId || null,
-        source: data.source || 'MESSENGER',
-        status: 'PENDING',
-        paymentStatus: 'UNPAID',
-        items: {
-          create: data.items.map((it) => ({
-            productId: it.productId || null,
-            productName: it.productName,
-            productImage: it.productImage || null,
-            quantity: it.quantity,
-            price: it.price,
-            total: it.quantity * it.price,
-          })),
+        data: {
+          accountId,
+          code,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone || null,
+          customerAddress: data.customerAddress || null,
+          customerNote: data.customerNote || null,
+          paymentMethod: data.paymentMethod || 'COD',
+          shippingFee: data.shippingFee || 0,
+          discount: data.discount || 0,
+          subtotal,
+          totalAmount,
+          pancakeOrderId: data.pancakeOrderId || null,
+          source: data.source || 'MESSENGER',
+          status: 'PENDING',
+          paymentStatus: 'UNPAID',
+          items: {
+            create: verifiedItems.map((it) => ({
+              productId: it.productId,
+              productName: it.productName,
+              productImage: it.productImage,
+              quantity: it.quantity,
+              price: it.price,
+              total: it.total,
+            })),
+          },
         },
-      },
-      include: {
-        items: true,
-      },
-    });
+        include: {
+          items: true,
+        },
+      });
 
       return order;
     } catch (_e) {
       // Fall through to in-memory fallback
     }
   }
+
 
   const newOrd = {
       id: `ord_${Date.now()}`,
@@ -381,21 +558,21 @@ export async function ingestPancakeOrder(rawOrder: PancakeRawOrder) {
     'Khách hàng Messenger';
   const customerPhone =
     rawOrder.bill_phone_number ||
-    ((rawOrder.customer as any)?.phone_numbers && (rawOrder.customer as any).phone_numbers[0]) ||
+    (rawOrder.customer?.phone_numbers && rawOrder.customer.phone_numbers[0]) ||
     rawOrder.customer?.phone_number ||
     rawOrder.shipping_address?.phone_number ||
     null;
   const customerAddress =
     rawOrder.shipping_address?.full_address ||
-    ((rawOrder.customer as any)?.shop_customer_addresses && (rawOrder.customer as any).shop_customer_addresses[0]?.full_address) ||
+    (rawOrder.customer?.shop_customer_addresses && rawOrder.customer.shop_customer_addresses[0]?.full_address) ||
     rawOrder.shipping_address?.address ||
     rawOrder.customer?.address ||
     null;
   const customerNote = rawOrder.customer_note || rawOrder.note || null;
 
   // Lấy danh sách mặt hàng
-  const rawItems: any[] = (rawOrder as any).items || (rawOrder as any).order_items || (rawOrder as any).variations || [];
-  const items: InMemoryOrderItem[] = rawItems.map((item: any) => {
+  const rawItems: PancakeRawItem[] = rawOrder.items || rawOrder.order_items || rawOrder.variations || [];
+  const items: InMemoryOrderItem[] = rawItems.map((item: PancakeRawItem) => {
     const quantity = Math.max(1, Number(item.quantity || 1));
     const varInfo = item.variation_info || {};
     const price = Number(item.price || item.retail_price || varInfo.retail_price || 0);
@@ -413,7 +590,8 @@ export async function ingestPancakeOrder(rawOrder: PancakeRawOrder) {
   const shippingFee = Number(rawOrder.shipping_fee || 0);
   const discount = Number(rawOrder.discount || 0);
   const { subtotal } = calculateOrderTotals(items, shippingFee, discount);
-  const totalAmount = Number((rawOrder as any).total_price ?? (rawOrder as any).total_price_after_sub_discount ?? Math.max(0, subtotal + shippingFee - discount));
+  const totalAmount = Number(rawOrder.total_price ?? rawOrder.total_price_after_sub_discount ?? Math.max(0, subtotal + shippingFee - discount));
+
 
   const code = rawOrder.bill_code || (rawOrder.id ? `POS-${rawOrder.id}` : `POS-${pancakeOrderId.slice(-6)}`);
 

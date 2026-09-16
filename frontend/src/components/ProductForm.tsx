@@ -47,7 +47,7 @@ export default function ProductForm() {
         success: boolean;
         message: string;
         warning?: string;
-        data?: any;
+        data?: unknown;
       }>('/api/products', {
         method: 'POST',
         body: JSON.stringify(formData),
@@ -67,12 +67,14 @@ export default function ProductForm() {
           router.push('/products');
         }, 1500);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Có lỗi xảy ra khi tạo sản phẩm';
       setStatus({
         type: 'error',
-        message: err.message || 'Có lỗi xảy ra khi tạo sản phẩm',
+        message: errorMsg,
       });
     } finally {
+
       setLoading(false);
     }
   };

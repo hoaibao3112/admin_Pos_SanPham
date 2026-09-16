@@ -18,9 +18,14 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   const data = await response.json();
 
   if (!response.ok) {
-    const errorMsg = data.message || (data.errors ? data.errors.map((e: any) => e.message).join(', ') : 'Lỗi kết nối máy chủ');
+    const errorMsg =
+      data.message ||
+      (Array.isArray(data.errors)
+        ? data.errors.map((e: { message?: string }) => e.message || 'Lỗi không xác định').join(', ')
+        : 'Lỗi kết nối máy chủ');
     throw new Error(errorMsg);
   }
+
 
   return data;
 }

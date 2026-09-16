@@ -109,9 +109,13 @@ if (process.env.NODE_ENV !== 'test') {
         .then(([prodRes, ordRes]) => {
           console.log(`✅ [Pancake Real Data Synced] ${prodRes.count ?? 29} sản phẩm, ${ordRes.syncedCount ?? 1} đơn hàng thực tế từ POS.`);
         })
-        .catch((e: any) => console.warn('⚠️ Lỗi nạp dữ liệu ban đầu từ Pancake:', e.message));
+        .catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn('⚠️ Lỗi nạp dữ liệu ban đầu từ Pancake:', msg);
+        });
     }
   });
+
 }
 
 // 9. Graceful Shutdown

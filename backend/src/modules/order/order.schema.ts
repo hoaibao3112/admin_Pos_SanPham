@@ -39,10 +39,21 @@ export const updateOrderStatusSchema = z.object({
 export const orderQuerySchema = z.object({
   status: z.string().optional(),
   search: z.string().optional(),
+  date: z.string().optional(),
+  month: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  phone: z.string().optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+export const orderLookupSchema = z.object({
+  phone: z.string().min(8, 'Số điện thoại cần có ít nhất 8 chữ số'),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
 export type OrderQueryInput = z.infer<typeof orderQuerySchema>;
+export type OrderLookupInput = z.infer<typeof orderLookupSchema>;
+

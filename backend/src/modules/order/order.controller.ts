@@ -5,12 +5,16 @@ import {
   createOrder,
   updateOrderStatus,
   syncOrdersFromPancake,
+  lookupOrdersByPhone,
 } from './order.service.js';
 import {
   createOrderSchema,
   updateOrderStatusSchema,
   orderQuerySchema,
+  orderLookupSchema,
 } from './order.schema.js';
+
+
 
 export async function getOrdersHandler(req: Request, res: Response, next: NextFunction) {
   try {
@@ -69,3 +73,14 @@ export async function syncPancakeOrdersHandler(_req: Request, res: Response, nex
     next(err);
   }
 }
+
+export async function lookupOrdersHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { phone } = orderLookupSchema.parse(req.query);
+    const result = await lookupOrdersByPhone(phone);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
